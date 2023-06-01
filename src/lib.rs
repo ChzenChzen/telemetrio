@@ -1,16 +1,22 @@
+use error_stack::{IntoReport, Result, ResultExt};
+use thiserror::Error as ThisError;
 use tokio::task::JoinHandle;
-use tracing::{dispatcher::SetGlobalDefaultError, log::SetLoggerError, subscriber, Subscriber};
+use tracing::{subscriber, Subscriber};
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_log::LogTracer;
 use tracing_subscriber::{fmt::MakeWriter, layer::SubscriberExt, EnvFilter, Registry};
 
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error("Failed to set logger")]
-    LogTracerInit(#[from] SetLoggerError),
-    #[error("Failed to set global default subscriber")]
-    SetGlobalDefault(#[from] SetGlobalDefaultError),
+#[derive(ThisError, Debug)]
+pub enum Reason {
+    #[error("Failed to setup redirect all logs to `LogTracer`")]
+    LogTracerInitialization,
+    #[error("Failed to set provided subscriber as global default")]
+    SetGlobalDefault,
 }
+
+#[derive(ThisError, Debug)]
+#[error("Init subscriber error. Reason: {0}")]
+pub struct Error(pub Reason);
 
 /// Compose multiple layers into a `tracing`'s subscriber.
 ///
@@ -38,8 +44,12 @@ where
 }
 
 pub fn init_subscriber(subscriber: impl Subscriber + Send + Sync) -> Result<(), Error> {
-    LogTracer::init().map_err(Into::<Error>::into)?;
-    subscriber::set_global_default(subscriber).map_err(Into::<Error>::into)?;
+    LogTracer::init()
+        .into_report()
+        .change_context(Error(Reason::LogTracerInitialization))?;
+    subscriber::set_global_default(subscriber)
+        .into_report()
+        .change_context(Error(Reason::SetGlobalDefault))?;
     Ok(())
 }
 
