@@ -1,5 +1,7 @@
+use derive_builder::UninitializedFieldError;
 use snafu::{prelude::*, Snafu};
 use tokio::task::JoinHandle;
+pub use tracing;
 use tracing::{log::SetLoggerError, subscriber, subscriber::SetGlobalDefaultError};
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_log::LogTracer;
@@ -13,10 +15,18 @@ pub enum Error {
     LogTracerInitialization { source: SetLoggerError },
     #[snafu(display("Failed to set provided subscriber as global default"))]
     SetGlobalDefault { source: SetGlobalDefaultError },
+    #[snafu(display("Failed to build `Telemetrio`"))]
+    Builder { source: UninitializedFieldError },
+}
+
+impl From<UninitializedFieldError> for Error {
+    fn from(source: UninitializedFieldError) -> Self {
+        Self::Builder { source }
+    }
 }
 
 #[derive(derive_builder::Builder)]
-#[builder(pattern = "owned")]
+#[builder(pattern = "owned", build_fn(error = "Error"))]
 pub struct Telemetrio {
     #[builder(setter(into), default = r#"env!("CARGO_CRATE_NAME").into()"#)]
     name: String,
